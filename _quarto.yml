@@ -1,0 +1,34 @@
+project:
+  type: default
+  title: "Evaluación Comparativa de Relojes Vectoriales vs. Lamport"
+
+lang: es
+
+format:
+  pdf:
+    documentclass: IEEEtran
+    classoption:
+      - conference        # IEEE Conference: dos columnas, tamano carta
+    papersize: letter
+    pdf-engine: pdflatex   # IEEEtran esta disenada para pdflatex (fuentes ptm)
+    fontfamily: times      # evita que lmodern sustituya a Times
+    number-sections: true
+    # IEEEtran es a dos columnas y longtable no funciona en ese modo. Pandoc
+    # 3.10 emite longtable para toda tabla markdown; por eso las tablas del
+    # articulo se escriben en LaTeX (\begin{table} + tabular).
+    longtable: false
+    fig-format: png        # figuras raster a 300 dpi
+    fig-dpi: 300           # figuras en alta resolucion
+    colorlinks: true
+    linkcolor: black
+    citecolor: black
+    urlcolor: black
+    cite-method: citeproc
+    csl: ieee.csl          # estilo IEEE numerico oficial (CSL)
+    bibliography: references.bib
+    link-citations: true
+    include-in-header: ieee-preamble.tex
+
+execute:
+  echo: false
+  warning: false

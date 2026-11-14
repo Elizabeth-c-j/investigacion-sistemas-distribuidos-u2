@@ -1,0 +1,37 @@
+# ---------------------------------------------------------------------------
+# Proyecto: Evaluación Comparativa de Relojes Vectoriales vs. Lamport
+# Entregables versionados: articulo.qmd, articulo.pdf, articulo_files/
+# (figuras PNG 300 dpi), ieee-preamble.tex, ieee.csl, references.bib,
+# _quarto.yml, results.csv, benchmark.py, PROMPTS_OPENCODE.md
+# ---------------------------------------------------------------------------
+
+# Bitácora privada de prompts: no se publica ni se comparte.
+mis_prompts.txt
+
+# Artefactos internos de Quarto (se regeneran en cada render).
+.quarto/
+
+# Productos intermedios de LaTeX.
+*.aux
+*.log
+*.out
+*.fls
+*.fdb_latexmk
+*.synctex.gz
+# articulo.tex solo existe si se renderiza con -M keep-tex:true.
+articulo.tex
+
+# Caché de Python / Jupyter.
+__pycache__/
+.ipynb_checkpoints/
+
+# Archivos del sistema operativo.
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# NOTA: articulo.pdf e ieee-preamble.tex NO se excluyen: son entregables del
+# artículo y deben quedar versionados.
+
+/.quarto/
+**/*.quarto_ipynb

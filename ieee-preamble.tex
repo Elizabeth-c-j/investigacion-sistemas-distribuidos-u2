@@ -1,0 +1,43 @@
+% ---------------------------------------------------------------------------
+% Preambulo de ajuste para IEEEtran sobre Quarto/Pandoc
+% ---------------------------------------------------------------------------
+% Se incluye al final del preambulo (include-in-header), despues de que
+% Pandoc haya cargado sus paquetes por defecto.
+
+% 1) Pandoc carga el paquete `parskip` en clases no-KOMA, lo que anula la
+%    sangria de parrafo. IEEEtran define su propio espaciado, asi que se
+%    restauran los valores tipograficos de IEEE (parrafo con sangria, sin
+%    espacio adicional entre parrafos).
+\setlength{\parindent}{1em}
+\setlength{\parskip}{0pt}
+\setlength{\parsep}{0pt}
+
+% 2) El paquete `caption` se carga DESPUES de este preambulo, por lo que el
+%    ajuste se difiere a \AtBeginDocument. Desconoce IEEEtran y aplica su
+%    estilo por defecto ("Figura 1: ..."); se aproxima la convencion IEEE:
+%    etiqueta en negrita y separada por punto.
+\AtBeginDocument{\captionsetup{labelfont=bf,labelsep=period,font=small}}
+\AtBeginDocument{\captionsetup[figure]{font=footnotesize}}
+
+% 3) Quarto/Pandoc emite \author{...} solo con el nombre. Se reemplaza por el
+%    bloque de autoria de IEEEtran (nombre, afiliacion y correo) justo antes de
+%    que \maketitle lo consuma.
+\makeatletter
+\AtBeginDocument{%
+  \def\@IEEEauthorblockAinterlinespace{2.5ex}%
+  \author{%
+    \IEEEauthorblockN{Deisy Elizabeth Calle Calle}%
+    \IEEEauthorblockA{Carrera de Ingeniería en Telemática, Facultad de Informática y Electrónica,\\
+    Escuela Superior Politécnica de Chimborazo (ESPOCH), Riobamba, Ecuador\\
+    calleelizabeth640@gmail.com\\[-4pt]
+    {\footnotesize Código 36 --- Sistemas Distribuidos y Paradigmas de la Computación (ETL1TP50)}}%
+  }%
+  \def\IEEEkeywordsname{Palabras clave}%
+}
+\makeatother
+
+% 4) Ajuste fino del espaciado alrededor de los flotantes para que cuatro
+%    figuras y dos tablas convivan con el texto sin paginas casi vacias.
+\setlength{\textfloatsep}{8pt plus 2pt minus 2pt}
+\setlength{\intextsep}{8pt plus 2pt minus 2pt}
+\setlength{\floatsep}{8pt plus 2pt minus 2pt}

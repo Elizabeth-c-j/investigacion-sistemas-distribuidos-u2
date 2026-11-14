@@ -1,0 +1,525 @@
+---
+title: "Evaluación Comparativa de Relojes Vectoriales vs. Lamport: Análisis de Consumo de Memoria y Detección de Eventos Concurrentes en Topologías de Malla"
+author:
+  - name: "Deisy Elizabeth Calle Calle"
+    email: "calleelizabeth640@gmail.com"
+    affiliations:
+      - name: "Carrera de Ingeniería en Telemática, Facultad de Informática y Electrónica, Escuela Superior Politécnica de Chimborazo (ESPOCH), Riobamba, Ecuador"
+abstract: |
+  Comparo los relojes de Lamport y los vectoriales en consumo de metadatos,
+  memoria y capacidad de detectar concurrencia.
+  Implementé un simulador de eventos discretos con jitter uniforme de
+  $[0, 50]$ ms sobre un retardo base de 10 ms y ejecuté 300 simulaciones en
+  mallas completa y parcial ($k=3$) con $N \in \{4, 8, 16, 32, 64\}$ y 30
+  repeticiones. Verifiqué la verdad de referencia por alcanzabilidad exacta
+  sobre el grafo de causalidad, independiente de ambos relojes, y clasifiqué
+  20 000 pares aleatorios por ejecución. El vectorial detectó el 100 % de los
+  pares concurrentes con cero falsos ordenamientos, mientras que Lamport
+  detectó el 0 %; ambos conservaron el 100 % de consistencia causal. Para $N=64$ el vectorial consumió 512 B por mensaje frente a 8 B
+  (64 veces más) y acumuló 1,96 MB frente a 30,6 KB, con un pico medido de
+  36,36 KB frente a 3,07 KB y un costo de actualización de 12,30 ms frente a
+  1,76 ms. La malla parcial generó hasta un 46,9 % más de concurrencia.
+  Concluyo que el vectorial es imprescindible para razonar sobre
+  concurrencia y que Lamport sigue siendo eficiente cuando basta un orden
+  total.
+---
+
+```{=latex}
+\begin{IEEEkeywords}
+relojes lógicos, relojes vectoriales, causalidad, concurrencia, sistemas distribuidos
+\end{IEEEkeywords}
+```
+
+```{python}
+#| label: configuracion
+#| include: false
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+
+plt.rcParams.update({
+    "font.family": "serif",
+    "font.serif": ["DejaVu Serif"],
+    "font.size": 7.5,
+    "axes.labelsize": 7.5,
+    "legend.fontsize": 6,
+    "xtick.labelsize": 6.5,
+    "ytick.labelsize": 6.5,
+    "axes.grid": True,
+    "grid.alpha": 0.25,
+    "grid.linewidth": 0.4,
+    "axes.spines.top": False,
+    "axes.spines.right": False,
+    "legend.frameon": False,
+})
+
+df = pd.read_csv("results.csv")
+NS = [4, 8, 16, 32, 64]
+
+ESTILO = {
+    ("malla_completa", "lamport"): dict(color="#1f4e79", marker="o", ls="-",
+                                        label="Lamport, completa"),
+    ("malla_completa", "vectorial"): dict(color="#c00000", marker="s", ls="-",
+                                          label="Vectorial, completa"),
+    ("malla_parcial", "lamport"): dict(color="#7fa9cc", marker="^", ls="--",
+                                       label="Lamport, parcial"),
+    ("malla_parcial", "vectorial"): dict(color="#e08a8a", marker="D", ls="--",
+                                         label="Vectorial, parcial"),
+}
+
+
+def agregado(topologia, reloj, columna):
+    """Media y desviación estándar por N para una configuración."""
+    sub = df[(df.topologia == topologia) & (df.reloj == reloj)]
+    media = sub.groupby("n_procesos")[columna].mean().reindex(NS)
+    sd = sub.groupby("n_procesos")[columna].std().reindex(NS)
+    return media.values, sd.values
+
+
+def eje_n(ax):
+    """Eje X logarítmico en base 2 con las cinco N del experimento."""
+    ax.set_xscale("log", base=2)
+    ax.set_xticks(NS)
+    ax.set_xticklabels([str(n) for n in NS])
+    ax.set_xlabel("Número de procesos $N$")
+    ax.minorticks_off()
+```
+
+## Introducción
+
+En un sistema distribuido no existe un reloj global: los relojes físicos
+derivan, la latencia varía y la sincronización perfecta no es alcanzable.
+Lamport formalizó esa limitación con la relación *happened-before* y propuso un
+reloj escalar que preserva el orden causal con un entero por proceso
+[@lamport1978time]. Los relojes vectoriales de Fidge [@fidge1988timestamps] y
+Mattern [@mattern1989virtual] añaden un contador por proceso y permiten decidir
+si dos eventos son concurrentes.
+
+La teoría está establecida: Charron-Bost demostró que decidir la concurrencia
+exactamente exige $N$ componentes [@charronbost1991concerning], y Schwarz y
+Mattern [@schwarz1994detecting], Raynal y Singhal [@raynal1996logical] y
+Kshemkalyani y Singhal [@kshemkalyani2008distributed] comparan analíticamente
+los mecanismos de detección causal. Escasean las evaluaciones experimentales
+que, sobre una misma traza, cuantifiquen bytes, memoria real, tiempo y exactitud
+en mallas concretas.
+
+Por ello diseño un banco de pruebas reproducible con 300 simulaciones de
+eventos discretos, una verdad de referencia independiente de ambos relojes y
+una comparación directa sobre idénticas trazas. Formulo tres hipótesis:
+
+- **H1.** El reloj vectorial detecta el 100 % de los eventos concurrentes;
+  Lamport detecta el 0 % porque su orden escalar es total.
+- **H2.** El overhead vectorial crece con $N$ ($8N$ bytes por mensaje y por
+  proceso) y el de Lamport permanece constante (8 bytes).
+- **H3.** La malla parcial, con menos caminos causales, produce más eventos
+  concurrentes que la completa.
+
+Mis contribuciones son: (i) un simulador con jitter que fuerza reordenamiento y
+una verdad de referencia verificable; (ii) un benchmark reproducible de 600
+filas con 20 000 pares clasificados por ejecución; (iii) la medición separada de
+metadatos teóricos, overhead de red y memoria real con `tracemalloc`; y (iv)
+evidencia de que la topología modula la concurrencia observada hasta en un
+46,9 %.
+
+## Fundamentos y trabajo relacionado
+
+### Orden causal y reloj de Lamport
+
+Defino *happened-before* ($\rightarrow$) como el menor orden transitivo que
+cumple: (i) si $a$ y $b$ ocurren en el mismo proceso y $a$ precede a $b$,
+entonces $a \rightarrow b$; (ii) si $a$ es el envío de un mensaje y $b$ su
+recepción, entonces $a \rightarrow b$. Dos eventos son concurrentes
+($a \parallel b$) cuando ni $a \rightarrow b$ ni $b \rightarrow a$.
+
+La condición de reloj de Lamport exige $a \rightarrow b \Rightarrow C(a) < C(b)$
+[@lamport1978time], lo que se logra con un contador entero, donde $t_m$ es la marca del mensaje recibido y el primer caso cubre los eventos locales y los envíos:
+
+```{=latex}
+\begin{equation}
+C_i \leftarrow C_i + 1, \qquad
+C_j \leftarrow \max(C_j, t_m) + 1,
+\label{eq:lamport}
+\end{equation}
+```
+
+El orden escalar es total: si $a \parallel b$, el reloj puede asignar
+$C(a) < C(b)$ sin relación causal, de modo que la implicación vale en un solo
+sentido.
+
+### Relojes vectoriales
+
+El reloj vectorial asigna $N$ contadores por proceso
+[@fidge1988timestamps; @mattern1989virtual]. En un evento local o envío se
+incrementa la componente propia; al recibir un mensaje con marca $V_r$ se
+fusiona componente a componente y luego se incrementa la propia:
+
+```{=latex}
+\begin{equation}
+\begin{aligned}
+V_i[i] &\leftarrow V_i[i] + 1,\\
+V_j[k] &\leftarrow \max\left(V_j[k], V_r[k]\right)\quad \forall k,\\
+V_j[j] &\leftarrow V_j[j] + 1.
+\end{aligned}
+\label{eq:vector}
+\end{equation}
+```
+
+Estas reglas satisfacen la propiedad fuerte
+
+```{=latex}
+\begin{equation}
+a \rightarrow b \iff V(a) < V(b),
+\label{eq:fuerte}
+\end{equation}
+```
+
+donde $<$ es la comparación estricta componente a componente. La ecuación
+\eqref{eq:fuerte} convierte al reloj vectorial en un detector exacto de
+concurrencia, a diferencia de \eqref{eq:lamport}.
+
+### Cota de tamaño y alternativas
+
+Charron-Bost demostró que todo reloj que decida la concurrencia exactamente
+requiere $N$ componentes, por lo que el costo lineal es inherente y no un
+defecto de implementación [@charronbost1991concerning]. Esa cota motiva las
+alternativas revisadas por Schwarz y Mattern [@schwarz1994detecting]:
+compresión de marcas al estilo Singhal-Kshemkalyani, relojes matriciales y
+mecanismos de espacio dinámico como los *Interval Tree Clocks* de Almeida,
+Baquero y Fonte [@almeida2008interval]. Raynal y Singhal [@raynal1996logical] y
+Kshemkalyani y Singhal [@kshemkalyani2008distributed] confirman que la
+expresividad causal se paga en metadatos; mi trabajo cuantifica ese precio, 8
+bytes frente a $8N$ por mensaje.
+
+## Metodología experimental
+
+### Simulador, topologías y carga
+
+Implementé el simulador en Python 3.14.3 sobre Windows 10 con una cola de
+prioridad (`heapq`) y solo biblioteca estándar. Cada uno de los $N$ procesos
+genera 100 eventos: el 40 % locales y el 60 % envíos a un vecino elegido
+uniformemente. Programo cada recepción con 10 ms de retardo base más un jitter
+uniforme $U(0, 50)$ ms, y separo los eventos propios del mismo proceso con
+$U(0{,}5, 5)$ ms; esa combinación desordena los mensajes respecto del orden de
+envío y fuerza fusiones no triviales.
+
+La malla completa conecta todos los pares (grado $N-1$). La malla parcial es un
+grafo conexo y regular de grado $k=3$ que construyo con un anillo más un
+emparejamiento perfecto aleatorio que no repite aristas del anillo; para $N=4$
+ambas topologías coinciden porque $k=3=N-1$, lo que declaro como limitación. La
+Tabla I resume los parámetros.
+
+```{=latex}
+\begin{table}[!t]
+\centering
+\caption{Parámetros del experimento.}
+\label{tbl-parametros}
+\footnotesize
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{@{}>{\raggedright\arraybackslash}p{1.24in}>{\raggedright\arraybackslash}p{1.95in}@{}}
+\toprule
+Parámetro & Valor \\
+\midrule
+Procesos ($N$) & 4, 8, 16, 32, 64 \\
+Eventos por proceso & 100 (40 \% locales, 60 \% envíos) \\
+Topologías & malla completa y malla parcial $k=3$ \\
+Retardo de red & 10 ms $+\,U(0,50)$ ms \\
+Separación de eventos propios & $U(0{,}5,\,5)$ ms \\
+Pares muestreados & 20\,000 por ejecución \\
+Repeticiones & 30 (semilla $1000 + r$) \\
+Ejecuciones / filas & 300 / 600 \\
+Verdad de referencia & alcanzabilidad en el DAG (bitsets) \\
+Entorno & Python 3.14.3, pandas 3.1.1, Windows 10 \\
+\bottomrule
+\end{tabular}
+\end{table}
+```
+
+### Verdad de referencia y muestreo
+
+Construyo el grafo de causalidad con aristas de orden de programa entre eventos
+consecutivos de un proceso y aristas de comunicación entre cada envío y su
+recepción. Calculo el *happens-before* por alcanzabilidad exacta sin consultar
+los relojes: recorro el DAG en orden inverso y represento los descendientes de
+cada evento con un entero de Python usado como bitset. Ese orden es topológico y el cálculo resulta lineal en
+nodos y aristas.
+
+Validé esa verdad de referencia sobre los 2 018 046 pares de las configuraciones
+$N \in \{4, 8\}$ en ambas topologías: la relación vectorial coincidió con la
+alcanzabilidad y Lamport cumplió la monotonía causal, con 0 discrepancias.
+Después muestreo 20 000 pares aleatorios sin reemplazo por ejecución (de hasta
+52 millones) y los clasifico con la verdad de referencia.
+
+### Métricas y reproducibilidad
+
+Mido por reloj y ejecución: bytes por proceso y por mensaje (8 bytes por
+entero), overhead total acumulado y memoria con `tracemalloc` sobre una
+reproducción aislada de la secuencia de operaciones del reloj, de modo que el
+pico corresponda solo a sus estructuras. Registro la tasa de detección, los
+falsos ordenamientos, la consistencia causal y el tiempo de actualización con
+`time.perf_counter_ns`. Ejecuto 30 repeticiones por configuración con semilla
+$1000 + r$ y publico las 600 filas en `results.csv`.
+
+Usé el agente OpenCode como asistente de codificación. Audité y validé todo el
+código: ejecuté un modo reducido, comprobé la verdad de referencia con la
+comparación exhaustiva de 0 discrepancias y verifiqué las invariantes teóricas
+—tasa vectorial igual a 1,0 y consistencia del 100 %— en las 600 filas. Todas
+las cifras de este artículo las calculé desde `results.csv`.
+
+## Resultados
+
+La Tabla II resume las métricas por topología, $N$ y reloj. El número de
+mensajes crece con $N$ (237,5 de media en $N=4$ y 3828,3 en $N=64$) y no depende
+de la topología: las diferencias entre malla completa y parcial no superan el
+0,1 %.
+
+```{python}
+#| label: tabla-resumen
+#| output: asis
+
+def fmt(x, dec=1):
+    return f"{x:.{dec}f}".replace(".", ",")
+
+def pm(x, s, dec=1):
+    return f"${fmt(x, dec)} \\pm {fmt(s, dec)}$"
+
+filas = []
+for topologia, nombre in (("malla_completa", "Completa"), ("malla_parcial", "Parcial")):
+    if filas:
+        filas.append("\\midrule")
+    for n in [4, 8, 16, 32, 64]:
+        for reloj, etiqueta in (("lamport", "Lamport"), ("vectorial", "Vectorial")):
+            sub = df[(df.topologia == topologia) & (df.n_procesos == n) & (df.reloj == reloj)]
+            filas.append(
+                f"{nombre} & {n} & {etiqueta} & "
+                f"{fmt(sub.mensajes_totales.mean(), 0)} & "
+                f"{fmt(sub.bytes_por_mensaje.mean(), 0)} & "
+                f"{pm(sub.overhead_total_bytes.mean()/1000, sub.overhead_total_bytes.std()/1000, 1)} & "
+                f"{pm(sub.memoria_tracemalloc_bytes.mean()/1000, sub.memoria_tracemalloc_bytes.std()/1000, 2)} & "
+                f"{fmt(sub.tasa_deteccion.mean(), 3)} & "
+                f"{fmt(sub.consistencia_causal.mean(), 2)} \\\\"
+            )
+
+cabecera = r"""\begin{table*}
+\centering
+\caption{Media $\pm$ desviación estándar (30 repeticiones) por topología, $N$
+y reloj. Las tasas se calculan sobre los pares concurrentes y causales reales.}
+\label{tbl-resultados}
+\scriptsize
+\renewcommand{\arraystretch}{0.82}
+\setlength{\tabcolsep}{4.5pt}
+\begin{tabular}{@{}llrrrrrrr@{}}
+\toprule
+Topología & $N$ & Reloj & Mensajes & B/mens. & Overhead (KB) & Memoria (KB) & Tasa det. & Consist. (\%) \\
+\midrule"""
+
+pie = r"""\bottomrule
+\end{tabular}
+\end{table*}"""
+
+print("```{=latex}")
+print(cabecera)
+print("\n".join(filas))
+print(pie)
+print("```")
+```
+
+El tamaño de cada mensaje (Fig. 1) confirma H2: Lamport transporta 8 bytes
+constantes y el vectorial $8N$, es decir, 512 bytes en $N=64$, 64 veces más.
+Como el número de mensajes también crece con $N$, el overhead acumulado (Fig. 2)
+escala cuadráticamente: de 7,6 KB en $N=4$ a 1960,1 KB en $N=64$ para el
+vectorial, frente a 30,6 KB de Lamport.
+
+```{python}
+#| label: fig-metadatos
+#| fig-cap: "Metadatos por mensaje frente a $N$ (escala logarítmica). Ambas topologías se superponen porque el tamaño depende solo de $N$ y la desviación estándar es nula."
+#| fig-pos: "!t"
+
+fig, ax = plt.subplots(figsize=(3.45, 1.62))
+for topologia in ("malla_completa", "malla_parcial"):
+    for reloj in ("lamport", "vectorial"):
+        m, _ = agregado(topologia, reloj, "bytes_por_mensaje")
+        ax.plot(NS, m, **ESTILO[(topologia, reloj)], markersize=2.8, linewidth=1.0)
+eje_n(ax)
+ax.set_yscale("log")
+ax.set_ylim(5, 5000)
+ax.set_ylabel("Bytes por mensaje")
+ax.legend(ncol=2, loc="upper left", handlelength=2.0)
+plt.tight_layout(pad=0.15)
+```
+
+```{python}
+#| label: fig-overhead
+#| fig-cap: "Overhead acumulado de metadatos (KB) frente a $N$. Las barras de error representan la desviación estándar de 30 repeticiones."
+#| fig-pos: "!t"
+
+fig, ax = plt.subplots(figsize=(3.45, 1.62))
+for topologia in ("malla_completa", "malla_parcial"):
+    for reloj in ("lamport", "vectorial"):
+        m, s = agregado(topologia, reloj, "overhead_total_bytes")
+        ax.errorbar(NS, m / 1000, yerr=s / 1000, capsize=1.5,
+                    markersize=2.8, linewidth=1.0, **ESTILO[(topologia, reloj)])
+eje_n(ax)
+ax.set_yscale("log")
+ax.set_ylim(1.5, 9000)
+ax.set_ylabel("Overhead acumulado (KB)")
+ax.legend(ncol=2, loc="upper left", handlelength=2.0)
+plt.tight_layout(pad=0.15)
+```
+
+La Fig. 3a muestra la concurrencia real y la Fig. 3b la tasa de detección. Los
+pares concurrentes crecen de 3703 en $N=4$ a 10 438 (malla completa) y 15 337
+(parcial) en $N=64$: la topología dispersa produce un 46,9 % más de concurrencia
+en $N=64$, un 44,1 % en $N=32$, un 31,5 % en $N=16$ y un 17,7 % en $N=8$, lo que
+confirma H3 y explica que la diferencia desaparezca en $N=4$. El reloj vectorial
+detectó el 100 % de esos pares en las 300 ejecuciones con cero falsos
+ordenamientos, mientras que Lamport detectó el 0 % y ordenó como causales todos
+los pares concurrentes. La consistencia causal fue del 100,00 % en los 600
+registros: la diferencia es de expresividad, no de corrección.
+
+```{python}
+#| label: fig-concurrencia
+#| fig-cap: "(a) Pares concurrentes reales y (b) tasa de detección por reloj frente a $N$. Las barras son la desviación estándar de 30 repeticiones; en (b) ambas topologías coinciden porque la detección es exacta o nula."
+#| fig-pos: "!t"
+
+fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(3.45, 1.62),
+                                gridspec_kw={"width_ratios": [1.45, 1], "wspace": 0.55})
+ancho = 0.36
+for k, (topologia, color, etiqueta) in enumerate((
+        ("malla_completa", "#5b7fa6", "Completa"),
+        ("malla_parcial", "#d98c8c", "Parcial"))):
+    m, s = agregado(topologia, "vectorial", "pares_concurrentes_reales")
+    pos = np.arange(len(NS)) + (k - 0.5) * ancho
+    ax1.bar(pos, m, width=ancho, yerr=s, capsize=1.2, color=color, label=etiqueta,
+            edgecolor="black", linewidth=0.3)
+ax1.set_xticks(np.arange(len(NS)))
+ax1.set_xticklabels([str(n) for n in NS])
+ax1.set_xlabel("$N$")
+ax1.set_ylabel("Pares concurrentes")
+ax1.legend(loc="upper left", handlelength=1.0)
+ax1.set_ylim(0, 18500)
+
+for topologia, desplazamiento in (("malla_completa", 0.955), ("malla_parcial", 1.045)):
+    for reloj in ("lamport", "vectorial"):
+        m, _ = agregado(topologia, reloj, "tasa_deteccion")
+        ax2.plot([n * desplazamiento for n in NS], m, ls="none", markersize=3.2,
+                 **{k: v for k, v in ESTILO[(topologia, reloj)].items() if k != "ls"})
+eje_n(ax2)
+ax2.set_ylim(-0.08, 1.12)
+ax2.set_yticks([0, 0.5, 1])
+ax2.set_ylabel("Tasa de detección")
+plt.tight_layout(pad=0.15)
+```
+
+El tiempo de actualización (Fig. 4) sigue la tendencia del tamaño del reloj: en
+la malla completa pasa de 0,16 ms en $N=4$ a 12,30 ms en $N=64$ para el
+vectorial, frente a 1,76 ms de Lamport en $N=64$, una razón de 7,0. El costo por
+evento se multiplica por 4,8 entre los extremos, coherente con la fusión de $N$
+componentes por recepción, mientras que Lamport ejecuta un máximo y una suma
+independientes de $N$.
+
+```{python}
+#| label: fig-tiempo
+#| fig-cap: "Tiempo de actualización de los relojes (ms) frente a $N$, en escala logarítmica. Las barras de error representan la desviación estándar de 30 repeticiones."
+#| fig-pos: "!t"
+
+fig, ax = plt.subplots(figsize=(3.45, 1.62))
+for topologia in ("malla_completa", "malla_parcial"):
+    for reloj in ("lamport", "vectorial"):
+        m, s = agregado(topologia, reloj, "tiempo_ms")
+        ax.errorbar(NS, m, yerr=s, capsize=1.5, markersize=2.8, linewidth=1.0,
+                    **ESTILO[(topologia, reloj)])
+eje_n(ax)
+ax.set_yscale("log")
+ax.set_ylim(0.06, 70)
+ax.set_ylabel("Tiempo de actualización (ms)")
+ax.legend(ncol=2, loc="upper left", handlelength=2.0)
+plt.tight_layout(pad=0.15)
+```
+
+La memoria medida (Tabla II) crece de 0,19 a 3,07 KB en Lamport y de 0,36 a
+36,36 KB en el vectorial entre $N=4$ y $N=64$: 11,8 veces en el extremo
+superior, muy por debajo de la razón teórica de 64 porque el overhead de objetos
+domina en ambos casos.
+
+## Discusión
+
+### Contraste de hipótesis
+
+**H1 aceptada.** El vectorial detectó 10 438 de 10 438 pares concurrentes en la
+malla completa y 15 337 de 15 337 en la parcial para $N=64$, sin falsos
+ordenamientos en ninguna de las 300 ejecuciones. Lamport detectó 0 de 10 438 y 0 de 15 337: un escalar induce un orden total y
+no puede expresar incomparabilidad.
+
+**H2 aceptada.** El overhead por mensaje fue exactamente $8N$ bytes en el
+vectorial y 8 en Lamport, con independencia de la topología. El costo total pasó
+de 7,6 KB a 1960,1 KB entre $N=4$ y $N=64$ (258 veces para un aumento de 16
+veces en $N$), porque el número de mensajes también se multiplica por 16. La
+memoria medida confirma la tendencia con un factor menor.
+
+**H3 aceptada.** La malla parcial generó entre un 17,7 % ($N=8$) y un 46,9 %
+($N=64$) más de pares concurrentes. Con menos vecinos, cada proceso comparte
+menos historia causal y más pares quedan incomparables; el efecto crece con $N$
+porque la malla completa densifica las cadenas causales mientras la parcial
+conserva grado constante.
+
+### Compromiso entre expresividad y escalabilidad
+
+La expresividad causal cuesta $N$ veces más metadatos y cerca de $N$ veces más
+tiempo por recepción: en $N=64$ el vectorial añade 1,93 MB acumulados, 33,3 KB
+de memoria y multiplica por 7 el tiempo de actualización. Ese precio es
+razonable cuando el sistema necesita razonar sobre concurrencia —depuración de
+trazas, detección de condiciones de carrera, cortes consistentes y dependencias
+entre réplicas— y excesivo cuando solo hace falta un orden total compatible con
+la causalidad. Lamport conserva utilidad en exclusión mutua distribuida,
+numeración de peticiones y detección de anomalías de orden, donde 8 bytes por
+mensaje y un costo independiente de $N$ son decisivos, aunque no resuelve la
+concurrencia.
+
+La diferencia entre bytes teóricos y memoria medida matiza las comparaciones
+analíticas. En $N=64$ el vectorial debería ocupar 512 bytes por proceso y
+`tracemalloc` registra 568, un 10,9 % más por la cabecera de la lista; Lamport
+debería ocupar 8 y registra 48, seis veces más por el objeto y su contenedor. El
+overhead de objetos comprime la razón observada a 11,8 veces frente a las 64
+teóricas: el vectorial es menos gravoso de lo que sugiere el conteo de enteros,
+pero nunca gratuito.
+
+### Implicaciones para telemática
+
+En una malla de sensores IoT el overhead por mensaje pesa tanto como el estado
+por nodo. Con $N=64$ el vectorial añade 512 bytes a cada
+mensaje; en enlaces IEEE 802.15.4 (Zigbee/6LoWPAN) con tramas de 127 bytes ese
+costo es prohibitivo y obliga
+a comprimir marcas o a usar *Interval Tree Clocks* [@almeida2008interval], que
+adaptan el estado al número de componentes activas. Para $N \leq 16$ el overhead acumulado es de 122,5 KB y la memoria de 2,95 KB,
+cifras despreciables en mallas WiFi o Ethernet, donde la detección exacta mejora
+la observabilidad sin comprometer ancho de banda.
+
+### Amenazas a la validez
+
+Mis resultados provienen de una simulación y no de una red real: modelo retardos
+y jitter de forma uniforme y no reproduzco pérdidas, retransmisiones ni
+particiones. El muestreo de 20 000 pares cubre una fracción pequeña del total, aunque
+detección y consistencia son exactas en las 300 ejecuciones. El tiempo medido incluye el costo del intérprete, así que solo
+compara ambos relojes entre sí. Limito $N$ a 64, la malla parcial a grado 3 y la
+carga a 100 eventos por proceso.
+
+## Conclusiones
+
+Cuantifiqué el costo y la utilidad de dos relojes lógicos sobre idénticas trazas
+de eventos. El vectorial detectó el 100 % de la concurrencia con cero falsos
+ordenamientos y el 100 % de consistencia causal, mientras que Lamport conservó
+la consistencia pero no detectó concurrencia alguna. Su precio fue de $8N$ bytes
+por mensaje y por proceso, 1,96 MB acumulados y 36,36 KB de memoria en $N=64$,
+con un tiempo de actualización 7 veces mayor; además, la malla parcial produjo
+hasta un 46,9 % más de pares concurrentes.
+
+Como trabajo futuro propongo evaluar relojes híbridos e *Interval Tree Clocks*
+con esta misma metodología, incorporar pérdidas y particiones al simulador,
+extender el rango de $N$ y de grados topológicos, y validar las conclusiones
+sobre una red real con MQTT o CoAP, midiendo también el consumo energético de
+cada representación.
+
+```{=latex}
+\section*{Referencias}
+```
