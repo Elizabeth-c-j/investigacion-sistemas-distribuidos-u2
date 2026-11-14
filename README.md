@@ -195,13 +195,17 @@ Fija el formato IEEE Conference en dos columnas, tamaño carta, `pdflatex` + Tim
 
 ## Bitácora y supervisión humana
 
-El archivo [`PROMPTS_OPENCODE.md`](PROMPTS_OPENCODE.md) documenta, en orden y de forma literal:
+El archivo [`PROMPTS_OPENCODE.md`](PROMPTS_OPENCODE.md) documenta, en orden cronológico, las **7 etapas** del trabajo:
 
-- el prompt de redacción del artículo completo;
-- la intervención humana durante el ajuste de la Tabla II;
-- la corrección de dos alucinaciones en `references.bib` (sede de Fidge 1988 y editores de Almeida 2008);
-- la corrección técnica de esta revisión: «enlaces LPWAN con MTU de 127 bytes» → «enlaces IEEE 802.15.4 (Zigbee/6LoWPAN) con tramas de 127 bytes»;
-- la verificación de que `mis_prompts.txt` no existe en el repositorio.
+1. **Benchmark y datos:** diseño del simulador, generación de `results.csv` y validación de la verdad de referencia.
+2. **Configuración Quarto/IEEE:** `_quarto.yml`, `ieee.csl`, `references.bib` y ajustes de IEEEtran, `pdflatex` y tablas en LaTeX.
+3. **Redacción del artículo:** las seis secciones, las figuras y tablas, y el ajuste final a 4 páginas.
+4. **Interrupción humana en el ciclo de la Tabla II:** cambio a un bloque raw de LaTeX para evitar los artefactos de Quarto.
+5. **Corrección de 2 alucinaciones bibliográficas:** sede de Fidge 1988 y editores de Almeida 2008.
+6. **Corrección técnica LPWAN → IEEE 802.15.4 y creación del README:** corrección de la sección V-C y cierre documental del repositorio.
+7. **Reestructuración de la bitácora, auditoría final de 8 puntos y ajustes:** verificación del repositorio y adición de «Código 36 — Sistemas Distribuidos y Paradigmas de la Computación (ETL1TP50)» en la cabecera.
+
+La bitácora incluye además las secciones de **supervisión humana**, **limitaciones del uso de IA** y la **declaración de integridad académica firmada** por la autora.
 
 ---
 
